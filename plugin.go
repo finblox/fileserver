@@ -2,14 +2,10 @@ package fileserver
 
 import (
 	"context"
-	"sync"
-	"time"
-
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/etag"
 	"github.com/roadrunner-server/errors"
-	"github.com/roadrunner-server/sdk/v4/utils"
 	"go.uber.org/zap"
+	"net/http"
+	"sync"
 )
 
 const pluginName string = "fileserver"
@@ -30,7 +26,7 @@ type Plugin struct {
 	config *Config
 
 	log *zap.Logger
-	app *fiber.App
+	app *http.Server
 }
 
 func (p *Plugin) Init(cfg Configurer, log Logger) error {
@@ -54,49 +50,25 @@ func (p *Plugin) Serve() chan error {
 	errCh := make(chan error, 1)
 
 	p.Lock()
-	p.app = fiber.New(fiber.Config{
-		ReadBufferSize:               1 * 1024 * 1024,
-		WriteBufferSize:              1 * 1024 * 1024,
-		Prefork:                      false,
-		BodyLimit:                    10 * 1024 * 1024,
-		ReadTimeout:                  time.Second * 10,
-		WriteTimeout:                 time.Second * 10,
-		DisableKeepalive:             false,
-		DisableDefaultDate:           false,
-		DisableDefaultContentType:    false,
-		DisableHeaderNormalizing:     false,
-		DisableStartupMessage:        true,
-		StreamRequestBody:            p.config.StreamRequestBody,
-		DisablePreParseMultipartForm: false,
-		ReduceMemoryUsage:            false,
-	})
+	mux := new(http.ServeMux)
 
-	if p.config.CalculateEtag {
-		p.app.Use(etag.New(etag.Config{
-			Weak: p.config.Weak,
-		}))
+	for _, cfg := range p.config.VirtualHosts {
+		fs := http.FileServer(http.Dir(cfg.Root))
+		mux.Handle(cfg.Prefix, http.StripPrefix(cfg.Prefix, fs))
 	}
 
-	for i := 0; i < len(p.config.Configuration); i++ {
-		p.app.Static(p.config.Configuration[i].Prefix, p.config.Configuration[i].Root, fiber.Static{
-			Compress:      p.config.Configuration[i].Compress,
-			ByteRange:     p.config.Configuration[i].BytesRange,
-			Browse:        false,
-			CacheDuration: time.Second * time.Duration(p.config.Configuration[i].CacheDuration),
-			MaxAge:        p.config.Configuration[i].MaxAge,
-		})
-	}
-
-	ln, err := utils.CreateListener(p.config.Address)
-	if err != nil {
-		errCh <- err
-		return errCh
+	p.app = &http.Server{
+		ReadTimeout:  p.config.ReadTimeout,
+		WriteTimeout: p.config.WriteTimeout,
+		IdleTimeout:  p.config.IdleTimeout,
+		Addr:         p.config.Address,
+		Handler:      mux,
 	}
 
 	go func() {
 		p.Unlock()
 		p.log.Info("file server started", zap.String("address", p.config.Address))
-		err = p.app.Listener(ln)
+		err := p.app.ListenAndServe()
 		if err != nil {
 			errCh <- err
 			return
@@ -114,7 +86,7 @@ func (p *Plugin) Stop(ctx context.Context) error {
 		p.Lock()
 		defer p.Unlock()
 
-		err := p.app.Shutdown()
+		err := p.app.Shutdown(ctx)
 		if err != nil {
 			errCh <- err
 			return
