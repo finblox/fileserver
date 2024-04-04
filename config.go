@@ -13,11 +13,21 @@ type Config struct {
 	WriteTimeout time.Duration `mapstructure:"write_timeout"`
 	IdleTimeout  time.Duration `mapstructure:"idle_timeout"`
 
+	MimeTypes []*MimeTypeCfg `mapstructure:"mime_types"`
+
 	// per-root configuration
-	VirtualHosts []*Cfg `mapstructure:"serve"`
+	VirtualHosts []*VirtualHostCfg `mapstructure:"serve"`
 }
 
-type Cfg struct {
+type MimeTypeCfg struct {
+	// Ext HTTP
+	Ext string `mapstructure:"ext"`
+
+	// MimeType defines the mime type of the corresponding extension
+	MimeType string `mapstructure:"mime_type"`
+}
+
+type VirtualHostCfg struct {
 	// Prefix HTTP
 	Prefix string `mapstructure:"prefix"`
 

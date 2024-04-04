@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/roadrunner-server/errors"
 	"go.uber.org/zap"
+	"mime"
 	"net/http"
 	"sync"
 )
@@ -51,6 +52,17 @@ func (p *Plugin) Serve() chan error {
 
 	p.Lock()
 	mux := new(http.ServeMux)
+
+	for _, cfg := range p.config.MimeTypes {
+		err := mime.AddExtensionType(cfg.Ext, cfg.MimeType)
+		if err != nil {
+			p.log.Error(
+				"failed to register mime type",
+				zap.String("ext", cfg.Ext),
+				zap.String("mime-type", cfg.MimeType),
+			)
+		}
+	}
 
 	for _, cfg := range p.config.VirtualHosts {
 		fs := http.FileServer(http.Dir(cfg.Root))
