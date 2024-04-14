@@ -66,6 +66,11 @@ func (p *Plugin) Serve() chan error {
 
 	for _, cfg := range p.config.VirtualHosts {
 		fs := http.FileServer(http.Dir(cfg.Root))
+		p.log.Info(
+			"registering virtual host",
+			zap.String("root", cfg.Root),
+			zap.String("prefix", cfg.Prefix),
+		)
 		mux.Handle(cfg.Prefix, http.StripPrefix(cfg.Prefix, fs))
 	}
 
